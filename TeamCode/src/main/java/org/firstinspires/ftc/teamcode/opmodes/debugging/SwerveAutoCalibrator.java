@@ -8,6 +8,8 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.seattlesolvers.solverslib.hardware.AbsoluteAnalogEncoder;
 import com.seattlesolvers.solverslib.hardware.servos.ServoEx;
 
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.swerve.SwerveModule;
+
 /*
  * 【使用說明】
  * 1. 啟動後，四個輪子會先回到 0.5 的位置。
@@ -29,10 +31,10 @@ public class SwerveAutoCalibrator extends LinearOpMode {
 
         // 初始化硬體 (請對應你的 Config 名稱)
         ServoEx[] servos = {
-                new ServoEx(hardwareMap, "fls", 0, 355),
-                new ServoEx(hardwareMap, "frs", 0, 355),
-                new ServoEx(hardwareMap, "rls", 0, 355),
-                new ServoEx(hardwareMap, "rrs", 0, 355)
+                new ServoEx(hardwareMap, "fls", 0, SwerveModule.SERVO_MAX_ANGLE),
+                new ServoEx(hardwareMap, "frs", 0, SwerveModule.SERVO_MAX_ANGLE),
+                new ServoEx(hardwareMap, "rls", 0, SwerveModule.SERVO_MAX_ANGLE),
+                new ServoEx(hardwareMap, "rrs", 0, SwerveModule.SERVO_MAX_ANGLE)
         };
 
         AbsoluteAnalogEncoder[] encoders = {

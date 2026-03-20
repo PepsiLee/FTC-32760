@@ -1,7 +1,5 @@
 package org.firstinspires.ftc.teamcode.commandbase.subsystems.swerve;
 
-import static java.lang.Math.abs;
-
 import androidx.annotation.NonNull;
 
 import com.acmerobotics.dashboard.config.Config;
@@ -24,7 +22,7 @@ import org.firstinspires.ftc.teamcode.constant.Constant;
 public class SwerveModule extends SubsystemBase {
 
     // === 硬體參數 ===
-    public static double SERVO_MAX_ANGLE = 355.0;
+    public static double SERVO_MAX_ANGLE = 360.0;
     private static final double DEGREES_TO_SERVO = 1.0 / SERVO_MAX_ANGLE;
     private final VoltageMonitor voltageMonitor;
     public String tag = "SwerveModule";
@@ -44,8 +42,6 @@ public class SwerveModule extends SubsystemBase {
      * 階段一：純計算 (Logic)
      */
 
-    private boolean isInverted = false;
-
     // ✅ FIX: 建構式加入 servoBias 參數
     public SwerveModule(@NonNull HardwareMap hardwareMap, String driveName, String servoName, String encoderName,
                         double offset, double servoBias, VoltageMonitor voltageMonitor, boolean invert) {
@@ -54,8 +50,8 @@ public class SwerveModule extends SubsystemBase {
         this.servoBias = servoBias;
 
         driveMotor = new MotorEx(hardwareMap, driveName);
-        // 設定 Servo 範圍 0-355
-        turnServo = new ServoEx(hardwareMap, servoName, 0, 355);
+        // 設定 Servo 範圍 0-360
+        turnServo = new ServoEx(hardwareMap, servoName, 0, SERVO_MAX_ANGLE);
         turnServo.setPwm(new PwmControl.PwmRange(500, 2500));
         turnServo.setInverted(invert);
 
@@ -80,44 +76,15 @@ public class SwerveModule extends SubsystemBase {
         encoder.update();
         this.currentAngle = encoder.getAbsoluteAngle();
 
-        // 2. 正規化目標角度 (-180 ~ 180)
+        // 2. 正規化目標角度 (-180 ~ 180)，再映射到 0~360
         double optimizedAngle = normalizeNeg180To180(targetAngle);
         double speedMultiplier = targetSpeed;
 
-        // === 3. 滯後邏輯 (Hysteresis) 開始 ===
-
-        // 設定門檻值
-        double enterThreshold = 100.0; // 超過這個值 -> 進入反轉
-        double exitThreshold = 80.0;  // 低於這個值 -> 離開反轉 (這就是你不想要馬上跳回來的原因)
-
-        double absAngle = Math.abs(optimizedAngle);
-
-        if (!isInverted) {
-            // 狀態 A: 目前是「正常模式」
-            if (absAngle > enterThreshold) {
-                isInverted = true;
-            }
-        } else {
-            // 狀態 B: 目前是「反轉模式」
-            if (absAngle < exitThreshold) {
-                isInverted = false;
-            }
-        }
-
-        // === 根據上面的狀態，執行反轉運算 ===
-        if (isInverted) {
-            if (optimizedAngle > 0) {
-                optimizedAngle -= 180.0;
-            } else {
-                optimizedAngle += 180.0;
-            }
-            speedMultiplier *= -1.0; // 反轉驅動馬達
-        }
-
-        // 4. 計算 Servo 最終位置 (Bias + 角度偏移)
+        // 3. 計算 Servo 最終位置 (Bias + 角度偏移)
+        // 取消 180 度反轉邏輯，直接允許完整 360 度轉向
         this.finalServoPosition = this.servoBias + optimizedAngle + SERVO_MAX_ANGLE / 2;
 
-        // 6. 設定驅動馬達速度
+        // 4. 設定驅動馬達速度
         this.finalDrivePower = speedMultiplier;
     }
 

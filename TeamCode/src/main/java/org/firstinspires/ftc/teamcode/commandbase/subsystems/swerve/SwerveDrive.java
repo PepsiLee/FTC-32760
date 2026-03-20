@@ -8,10 +8,8 @@ import com.acmerobotics.roadrunner.control.PIDFController;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-import org.firstinspires.ftc.robotcore.external.navigation.UnnormalizedAngleUnit;
 import org.firstinspires.ftc.teamcode.Robot;
 import org.firstinspires.ftc.teamcode.commandbase.subsystems.VoltageMonitor;
-import org.firstinspires.ftc.teamcode.commandbase.subsystems.IMU;
 import org.firstinspires.ftc.teamcode.constant.Constant;
 import org.firstinspires.ftc.teamcode.constant.SwerveConstants;
 
@@ -48,6 +46,7 @@ public class SwerveDrive extends CustomDrivetrain implements Subsystem {
     public double RB_OFFSET;
 
     // ========== TeleOp 手動控制 ==========
+    private double currentHeading = 0;
     public double targetHeading = 0;
     private boolean isHeadingLocked = false;
 
@@ -98,9 +97,10 @@ public class SwerveDrive extends CustomDrivetrain implements Subsystem {
      * @param forward      前後移動 (-gamepad.left_stick_y)
      * @param strafe       左右平移 (gamepad.left_stick_x)
      * @param rotation     旋轉 (gamepad.right_stick_x)
-     * @param fieldHeading 當前機器人的場地角度 (由外部 IMU 提供)
+     * @param fieldHeading 當前機器人的場地角度 (弧度，由外部 IMU 提供)
      */
     public void TeleOpDrive(double forward, double strafe, double rotation, double fieldHeading) {
+        this.currentHeading = fieldHeading;
         double magnitude = Math.hypot(forward, strafe);
         double fInput = 0, sInput = 0;
 
@@ -363,7 +363,7 @@ public class SwerveDrive extends CustomDrivetrain implements Subsystem {
     public String debugString() {
         return String.format(
                 "Heading: %.1f° (Target: %.1f°, Locked: %b) | Voltage: %.1fV",
-                Math.toDegrees(targetHeading),
+                Math.toDegrees(currentHeading),
                 Math.toDegrees(targetHeading),
                 isHeadingLocked,
                 getVoltage()
