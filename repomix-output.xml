@@ -1,0 +1,328 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Robot.java
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Robot.java
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Robot.java">
+package org.firstinspires.ftc.teamcode;
+
+import static org.firstinspires.ftc.teamcode.constant.Constants.followerConstants;
+import static org.firstinspires.ftc.teamcode.constant.Constants.localizerConstants;
+import static org.firstinspires.ftc.teamcode.constant.Constants.pathConstraints;
+
+import com.pedropathing.follower.Follower;
+import com.pedropathing.ftc.FollowerBuilder;
+import com.pedropathing.geometry.Pose;
+import com.qualcomm.hardware.lynx.LynxModule;
+import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.seattlesolvers.solverslib.command.CommandScheduler;
+import com.seattlesolvers.solverslib.geometry.Pose2d;
+
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.IMU;
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.ShooterSystem;
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.VoltageMonitor;
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.intake.Intake;
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.shooter.Shooter;
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.swerve.SwerveDrive;
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.turret.Turret;
+import org.firstinspires.ftc.teamcode.commandbase.subsystems.vision.Vision;
+import org.firstinspires.ftc.teamcode.constant.SwerveConstants;
+
+import java.util.List;
+
+/**
+ * Robot 容器類別 - 集中管理所有子系統
+ *
+ * 使用 Singleton 模式，確保 TeleOp 和 Autonomous 使用相同的硬體實例
+ * 整合 Command-Based 架構和 Pedro Pathing
+ */
+public class Robot extends com.seattlesolvers.solverslib.command.Robot {
+
+    // ==================== Singleton ====================
+    private static final Robot instance = new Robot();
+
+    public static Robot getInstance() {
+        return instance;
+    }
+
+    // ==================== 硬體管理 ====================
+    private HardwareMap hardwareMap;
+    private List<LynxModule> allHubs;
+
+    // ==================== 子系統 ====================
+    public VoltageMonitor voltageMonitor;
+    public SwerveDrive drive;
+    public Intake intake;
+    public Turret turret;
+    public Shooter shooter;
+    public ShooterSystem shooterSystem;
+    public Vision vision;
+    public IMU imu;
+
+    // ==================== Pedro Pathing ====================
+    public Follower follower;
+
+    // ==================== 常數 ====================
+    public SwerveConstants swerveConstants;
+
+    // ==================== 狀態標記 ====================
+    private boolean isInitialized = false;
+
+    /**
+     * 私有建構子（Singleton 模式）
+     */
+    private Robot() {
+        // 防止外部實例化
+    }
+
+    /**
+     * 初始化所有子系統和硬體
+     *
+     * @param hardwareMap FTC HardwareMap
+     */
+    public void init(HardwareMap hardwareMap) {
+        if (isInitialized) {
+            // 如果已經初始化過，先清理
+            cleanup();
+        }
+
+        this.hardwareMap = hardwareMap;
+
+        // 1. 設定 Swerve 常數
+        this.swerveConstants = new SwerveConstants();
+        swerveConstants.defaults();
+
+        // 2. 設定 Bulk Reading（提升效能）
+        setupBulkReading();
+
+        // 3. 初始化基礎子系統
+        initializeBaseSubsystems();
+
+        // 4. 初始化遊戲子系統
+        initializeGameSubsystems();
+
+        // 5. 初始化 Pedro Pathing
+        initializePedroPathing();
+
+        // 6. 註冊子系統到 CommandScheduler
+        registerSubsystems();
+
+        isInitialized = true;
+    }
+
+    /**
+     * 設定 Bulk Reading 模式
+     */
+    private void setupBulkReading() {
+        allHubs = hardwareMap.getAll(LynxModule.class);
+        for (LynxModule module : allHubs) {
+            module.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        }
+    }
+
+    /**
+     * 初始化基礎子系統（電壓監控、IMU、底盤）
+     */
+    private void initializeBaseSubsystems() {
+        voltageMonitor = new VoltageMonitor(hardwareMap);
+        imu = new IMU(hardwareMap);
+        drive = new SwerveDrive(hardwareMap, voltageMonitor, swerveConstants);
+    }
+
+    /**
+     * 初始化遊戲子系統（射擊、進球、視覺）
+     */
+    private void initializeGameSubsystems() {
+        turret = new Turret(hardwareMap, voltageMonitor);
+        shooter = new Shooter(hardwareMap, voltageMonitor);
+        intake = new Intake(hardwareMap);
+        vision = new Vision(hardwareMap);
+        shooterSystem = new ShooterSystem(shooter, turret);
+    }
+
+    /**
+     * 初始化 Pedro Pathing Follower
+     */
+    private void initializePedroPathing() {
+        follower = new FollowerBuilder(followerConstants, hardwareMap)
+                .setDrivetrain(drive)  // 使用我們的 SwerveDrive
+                .pinpointLocalizer(localizerConstants)
+                .pathConstraints(pathConstraints)
+                .build();
+    }
+
+    /**
+     * 註冊所有子系統到 CommandScheduler
+     */
+    private void registerSubsystems() {
+        register(drive, intake, turret, shooter, shooterSystem, vision);
+    }
+
+    // ==================== TeleOp 方法 ====================
+
+    /**
+     * TeleOp 更新循環
+     * 包含 CommandScheduler 和 Bulk Cache 清理
+     */
+    public void updateTeleOp() {
+        // 清除 Bulk Cache
+        clearBulkCache();
+
+        // 更新 IMU
+        imu.update();
+        drive.update();
+    }
+
+    /**
+     * 重置機器人朝向（TeleOp 用）
+     */
+    public void resetHeading() {
+        imu.resetHeading();
+    }
+
+    /**
+     * 獲取當前機器人位置（TeleOp 用）
+     */
+    public Pose2d getPose() {
+        return imu.getPose();
+    }
+
+    // ==================== Autonomous 方法 ====================
+
+    /**
+     * Autonomous 更新循環
+     * 包含 Pedro Pathing 更新、CommandScheduler 和 Bulk Cache 清理
+     */
+    public void updateAuto() {
+        // 清除 Bulk Cache
+        clearBulkCache();
+
+        // 更新 Pedro Pathing
+        follower.update();
+    }
+
+    /**
+     * 設定 Autonomous 起始位置
+     *
+     * @param startPose 起始位置（Pedro Pathing Pose）
+     */
+    public void setStartingPose(    Pose startPose) {
+        follower.setStartingPose(startPose);
+    }
+
+    /**
+     * 獲取當前機器人位置（Autonomous 用，Pedro Pathing）
+     */
+    public Pose getAutoPose() {
+        return follower.getPose();
+    }
+
+    /**
+     * 檢查 Follower 是否正在執行路徑
+     */
+    public boolean isFollowerBusy() {
+        return follower.isBusy();
+    }
+
+    // ==================== 工具方法 ====================
+
+    /**
+     * 清除所有 Hub 的 Bulk Cache
+     */
+    private void clearBulkCache() {
+        if (allHubs != null) {
+            for (LynxModule module : allHubs) {
+                module.clearBulkCache();
+            }
+        }
+    }
+
+    /**
+     * 停止所有子系統
+     */
+    public void stopAll() {
+        drive.stop();
+        shooterSystem.stopAll();
+        intake.stop();
+    }
+
+    /**
+     * 緊急停止 - 取消所有 Command 並停止所有子系統
+     */
+    public void emergencyStop() {
+        CommandScheduler.getInstance().cancelAll();
+        stopAll();
+    }
+
+    /**
+     * 清理資源（在重新初始化前呼叫）
+     */
+    private void cleanup() {
+        if (CommandScheduler.getInstance() != null) {
+            CommandScheduler.getInstance().cancelAll();
+        }
+        stopAll();
+        isInitialized = false;
+    }
+
+    /**
+     * 檢查是否已初始化
+     */
+    public boolean isInitialized() {
+        return isInitialized;
+    }
+
+    /**
+     * 獲取當前電壓
+     */
+    public double getVoltage() {
+        return voltageMonitor.getVoltage();
+    }
+}
+</file>
+
+</files>
