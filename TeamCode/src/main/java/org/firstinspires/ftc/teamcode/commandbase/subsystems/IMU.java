@@ -14,7 +14,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.external.navigation.UnnormalizedAngleUnit;
 
 public class IMU extends SubsystemBase {
-    private static double PINPOINT_TELEOP_POLLING_RATE = 20;
+    public static double PINPOINT_TELEOP_POLLING_RATE = 50;
     private final GoBildaPinpointDriver pinpoint;
     private final ElapsedTime timer;
 
