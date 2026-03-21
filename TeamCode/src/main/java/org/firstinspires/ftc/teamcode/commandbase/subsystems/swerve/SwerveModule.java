@@ -86,35 +86,41 @@ public class SwerveModule extends SubsystemBase {
         double optimizedAngle = normalizeNeg180To180(targetAngle);
         double speedMultiplier = targetSpeed;
 
+        // 與「目前角度」比較，求最短角度差，避免只看目標角本身導致卡頓
+        double angleError = shortestAngleDifference(currentAngle, optimizedAngle);
+
         // === 3. 滯後邏輯 (Hysteresis) 開始 ===
 
         // 設定門檻值
-        double enterThreshold = 100.0; // 超過這個值 -> 進入反轉
-        double exitThreshold = 80.0;  // 低於這個值 -> 離開反轉 (這就是你不想要馬上跳回來的原因)
+        double enterThreshold = 95.0; // 超過這個值 -> 進入反轉
+        double exitThreshold = 85.0;  // 低於這個值 -> 離開反轉
 
-        double absAngle = Math.abs(optimizedAngle);
+        double absAngleError = Math.abs(angleError);
 
         if (!isInverted) {
             // 狀態 A: 目前是「正常模式」
-            if (absAngle > enterThreshold) {
+            if (absAngleError > enterThreshold) {
                 isInverted = true;
             }
         } else {
             // 狀態 B: 目前是「反轉模式」
-            if (absAngle < exitThreshold) {
+            if (absAngleError < exitThreshold) {
                 isInverted = false;
             }
         }
 
         // === 根據上面的狀態，執行反轉運算 ===
         if (isInverted) {
-            if (optimizedAngle > 0) {
-                optimizedAngle -= 180.0;
+            if (angleError > 0) {
+                angleError -= 180.0;
             } else {
-                optimizedAngle += 180.0;
+                angleError += 180.0;
             }
             speedMultiplier *= -1.0; // 反轉驅動馬達
         }
+
+        // 把「最短角度差」轉回絕對目標角
+        optimizedAngle = normalizeNeg180To180(currentAngle + angleError);
 
         // 4. 計算 Servo 最終位置 (Bias + 角度偏移)
         this.finalServoPosition = this.servoBias + optimizedAngle + SERVO_MAX_ANGLE / 2;
@@ -150,6 +156,10 @@ public class SwerveModule extends SubsystemBase {
         while (angle > 180) angle -= 360;
         while (angle <= -180) angle += 360;
         return angle;
+    }
+
+    private double shortestAngleDifference(double current, double target) {
+        return normalizeNeg180To180(target - current);
     }
 
     public double getCurrentAngle() {
