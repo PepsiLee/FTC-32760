@@ -16,6 +16,7 @@ import com.seattlesolvers.solverslib.command.button.GamepadButton;
 import com.seattlesolvers.solverslib.gamepad.GamepadEx;
 import com.seattlesolvers.solverslib.gamepad.GamepadKeys;
 import com.seattlesolvers.solverslib.geometry.Pose2d;
+import com.seattlesolvers.solverslib.geometry.Translation2d;
 
 import org.firstinspires.ftc.teamcode.Robot;
 import org.firstinspires.ftc.teamcode.commandbase.commands.FullAimCommand;
@@ -191,18 +192,19 @@ public class TeleOpMain extends CommandOpMode {
     public void run() {
         robot.profiler.start("Loop");
 
+        // 先更新感測與按鍵，再執行 CommandScheduler，避免控制使用到上一圈資料
+        robot.updateTeleOp();
+        driverOp.readButtons();
+        toolOp.readButtons();
+
+        Translation2d goalPose = Constant.GOAL_POSE();
         Pose2d currentPose = robot.getPose();
         currentDistanceToGoal = Math.hypot(
-                Constant.GOAL_POSE().getX() - currentPose.getX(),
-                Constant.GOAL_POSE().getY() - currentPose.getY()
+                goalPose.getX() - currentPose.getX(),
+                goalPose.getY() - currentPose.getY()
         );
 
         super.run();
-        // 確保 updateTeleOp 裡有執行 robot.imu.update() 來更新角度快取
-        robot.updateTeleOp();
-
-        driverOp.readButtons();
-        toolOp.readButtons();
 
         updateMatchTelemetry();
 

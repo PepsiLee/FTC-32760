@@ -36,6 +36,8 @@ public class SwerveModule extends SubsystemBase {
     private double targetAngle = 0;
     private double finalServoPosition = 0; // 預設中間
     private double finalDrivePower = 0;
+    private double lastAppliedServoPosition = Double.NaN;
+    private double lastAppliedDrivePower = Double.NaN;
 
     // ✅ FIX: 保存傳入的 Bias
     private double servoBias;
@@ -43,8 +45,6 @@ public class SwerveModule extends SubsystemBase {
     /**
      * 階段一：純計算 (Logic)
      */
-
-    private boolean isInverted = false;
 
     // ✅ FIX: 建構式加入 servoBias 參數
     public SwerveModule(@NonNull HardwareMap hardwareMap, String driveName, String servoName, String encoderName,
@@ -73,49 +73,32 @@ public class SwerveModule extends SubsystemBase {
     }
 
     public void setServoBias(double bias){
-        this.servoBias = bias;
+        if (Math.abs(this.servoBias - bias) > 1e-6) {
+            this.servoBias = bias;
+            // Bias changed during tuning/zero test: force a fresh write this loop.
+            this.lastAppliedServoPosition = Double.NaN;
+        }
     }
 
     public void prepare() {
         encoder.update();
         this.currentAngle = encoder.getAbsoluteAngle();
 
-        // 2. 正規化目標角度 (-180 ~ 180)
-        double optimizedAngle = normalizeNeg180To180(targetAngle);
+        // 2. 目標角度與目前角度的最短差值（處理跨 ±180 的連續性）
+        double desiredAngle = normalizeNeg180To180(targetAngle);
+        double delta = normalizeNeg180To180(desiredAngle - currentAngle);
         double speedMultiplier = targetSpeed;
 
-        // === 3. 滯後邏輯 (Hysteresis) 開始 ===
-
-        // 設定門檻值
-        double enterThreshold = 100.0; // 超過這個值 -> 進入反轉
-        double exitThreshold = 80.0;  // 低於這個值 -> 離開反轉 (這就是你不想要馬上跳回來的原因)
-
-        double absAngle = Math.abs(optimizedAngle);
-
-        if (!isInverted) {
-            // 狀態 A: 目前是「正常模式」
-            if (absAngle > enterThreshold) {
-                isInverted = true;
-            }
-        } else {
-            // 狀態 B: 目前是「反轉模式」
-            if (absAngle < exitThreshold) {
-                isInverted = false;
-            }
+        // 3. 超過 90 度就反向驅動，讓模組走最短角度
+        if (Math.abs(delta) > 90.0) {
+            delta = normalizeNeg180To180(delta > 0 ? delta - 180.0 : delta + 180.0);
+            speedMultiplier *= -1.0;
         }
 
-        // === 根據上面的狀態，執行反轉運算 ===
-        if (isInverted) {
-            if (optimizedAngle > 0) {
-                optimizedAngle -= 180.0;
-            } else {
-                optimizedAngle += 180.0;
-            }
-            speedMultiplier *= -1.0; // 反轉驅動馬達
-        }
+        double commandedAngle = normalizeNeg180To180(currentAngle + delta);
 
         // 4. 計算 Servo 最終位置 (Bias + 角度偏移)
-        this.finalServoPosition = this.servoBias + optimizedAngle + SERVO_MAX_ANGLE / 2;
+        this.finalServoPosition = this.servoBias + commandedAngle + SERVO_MAX_ANGLE / 2;
 
         // 6. 設定驅動馬達速度
         this.finalDrivePower = speedMultiplier;
@@ -128,8 +111,20 @@ public class SwerveModule extends SubsystemBase {
         String writeTag = "Swerve:" + driveName + ":Write";
         Robot.getInstance().profiler.start(writeTag);
 
-        turnServo.set(finalServoPosition);
-        driveMotor.set(finalDrivePower);
+        // While driving/turning, always push steering updates to avoid "stuck" feeling.
+        double servoTolerance = Math.abs(finalDrivePower) > 0.02 ? 0.0 : Constant.TURN_SERVO_CACHING_TOLERANCE;
+        if (Double.isNaN(lastAppliedServoPosition) ||
+                Math.abs(finalServoPosition - lastAppliedServoPosition) > servoTolerance) {
+            turnServo.set(finalServoPosition);
+            lastAppliedServoPosition = finalServoPosition;
+        }
+
+        double driveTolerance = Math.abs(finalDrivePower) > 0.02 ? 0.0 : Constant.DRIVE_MOTOR_CACHING_TOLERANCE;
+        if (Double.isNaN(lastAppliedDrivePower) ||
+                Math.abs(finalDrivePower - lastAppliedDrivePower) > driveTolerance) {
+            driveMotor.set(finalDrivePower);
+            lastAppliedDrivePower = finalDrivePower;
+        }
 
         Robot.getInstance().profiler.end(writeTag);
     }
