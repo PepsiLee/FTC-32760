@@ -1,15 +1,11 @@
 package org.firstinspires.ftc.teamcode.commandbase.subsystems.swerve;
 
-import static java.lang.Math.abs;
-
 import androidx.annotation.NonNull;
 
 import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.PwmControl;
-import com.qualcomm.robotcore.util.Range;
-import com.qualcomm.robotcore.util.RobotLog;
 import com.seattlesolvers.solverslib.command.SubsystemBase;
 import com.seattlesolvers.solverslib.hardware.motors.Motor;
 import com.seattlesolvers.solverslib.hardware.motors.MotorEx;
@@ -25,7 +21,8 @@ public class SwerveModule extends SubsystemBase {
 
     // === 硬體參數 ===
     public static double SERVO_MAX_ANGLE = 355.0;
-    private static final double DEGREES_TO_SERVO = 1.0 / SERVO_MAX_ANGLE;
+    // 舵機角度變化速度限制（deg/sec），用來平滑邊走邊轉
+    public static double MAX_STEER_RATE_DEG_PER_SEC = 540.0;
     private final VoltageMonitor voltageMonitor;
     public String tag = "SwerveModule";
     public MotorEx driveMotor;
@@ -46,7 +43,8 @@ public class SwerveModule extends SubsystemBase {
      * 階段一：純計算 (Logic)
      */
 
-    private boolean isInverted = false;
+    private double lastCommandedAngle = Double.NaN;
+    private long lastPrepareNanos = 0L;
 
     // ✅ FIX: 建構式加入 servoBias 參數
     public SwerveModule(@NonNull HardwareMap hardwareMap, String driveName, String servoName, String encoderName,
@@ -82,50 +80,24 @@ public class SwerveModule extends SubsystemBase {
         encoder.update();
         this.currentAngle = encoder.getAbsoluteAngle();
 
-        // 2. 正規化目標角度 (-180 ~ 180)
+        // 1) 角度 wrap：先將目標角度正規化到標準範圍 (-180 ~ 180)
         double optimizedAngle = normalizeNeg180To180(targetAngle);
         double speedMultiplier = targetSpeed;
 
-        // 與「目前角度」比較，求最短角度差，避免只看目標角本身導致卡頓
+        // 2) 最短路徑優化：若需要轉超過 90 度，改走「角度 +180 並反轉輪速」
         double angleError = shortestAngleDifference(currentAngle, optimizedAngle);
-
-        // === 3. 滯後邏輯 (Hysteresis) 開始 ===
-
-        // 設定門檻值
-        double enterThreshold = 95.0; // 超過這個值 -> 進入反轉
-        double exitThreshold = 85.0;  // 低於這個值 -> 離開反轉
-
-        double absAngleError = Math.abs(angleError);
-
-        if (!isInverted) {
-            // 狀態 A: 目前是「正常模式」
-            if (absAngleError > enterThreshold) {
-                isInverted = true;
-            }
-        } else {
-            // 狀態 B: 目前是「反轉模式」
-            if (absAngleError < exitThreshold) {
-                isInverted = false;
-            }
+        if (Math.abs(angleError) > 90.0) {
+            optimizedAngle = normalizeNeg180To180(optimizedAngle + 180.0);
+            speedMultiplier *= -1.0;
         }
 
-        // === 根據上面的狀態，執行反轉運算 ===
-        if (isInverted) {
-            if (angleError > 0) {
-                angleError -= 180.0;
-            } else {
-                angleError += 180.0;
-            }
-            speedMultiplier *= -1.0; // 反轉驅動馬達
-        }
+        // 3) 平滑限制（slew rate）：限制每秒可改變的角度，避免邊走邊轉時頓挫
+        optimizedAngle = rateLimitAngle(optimizedAngle);
 
-        // 把「最短角度差」轉回絕對目標角
-        optimizedAngle = normalizeNeg180To180(currentAngle + angleError);
-
-        // 4. 計算 Servo 最終位置 (Bias + 角度偏移)
+        // 4) 計算 Servo 最終位置 (Bias + 角度偏移)
         this.finalServoPosition = this.servoBias + optimizedAngle + SERVO_MAX_ANGLE / 2;
 
-        // 6. 設定驅動馬達速度
+        // 5) 設定驅動馬達速度
         this.finalDrivePower = speedMultiplier;
     }
 
@@ -162,6 +134,29 @@ public class SwerveModule extends SubsystemBase {
         return normalizeNeg180To180(target - current);
     }
 
+    private double rateLimitAngle(double targetAngle) {
+        long nowNanos = System.nanoTime();
+
+        if (Double.isNaN(lastCommandedAngle) || lastPrepareNanos == 0L) {
+            lastCommandedAngle = targetAngle;
+            lastPrepareNanos = nowNanos;
+            return targetAngle;
+        }
+
+        double dtSec = (nowNanos - lastPrepareNanos) / 1e9;
+        if (dtSec <= 0) {
+            return lastCommandedAngle;
+        }
+
+        double maxStep = MAX_STEER_RATE_DEG_PER_SEC * dtSec;
+        double diff = shortestAngleDifference(lastCommandedAngle, targetAngle);
+        double limitedStep = Math.max(-maxStep, Math.min(maxStep, diff));
+
+        lastCommandedAngle = normalizeNeg180To180(lastCommandedAngle + limitedStep);
+        lastPrepareNanos = nowNanos;
+        return lastCommandedAngle;
+    }
+
     public double getCurrentAngle() {
         return currentAngle;
     }
@@ -169,6 +164,8 @@ public class SwerveModule extends SubsystemBase {
     public void stop() {
         turnServo.disable();
         driveMotor.set(0);
+        lastCommandedAngle = Double.NaN;
+        lastPrepareNanos = 0L;
     }
 
     public double getTargetAngle() {
