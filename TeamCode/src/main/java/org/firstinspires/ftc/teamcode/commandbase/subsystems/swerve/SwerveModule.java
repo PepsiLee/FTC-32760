@@ -36,6 +36,8 @@ public class SwerveModule extends SubsystemBase {
     private double targetAngle = 0;
     private double finalServoPosition = 0; // 預設中間
     private double finalDrivePower = 0;
+    private double lastAppliedServoPosition = Double.NaN;
+    private double lastAppliedDrivePower = Double.NaN;
 
     // ✅ FIX: 保存傳入的 Bias
     private double servoBias;
@@ -128,8 +130,17 @@ public class SwerveModule extends SubsystemBase {
         String writeTag = "Swerve:" + driveName + ":Write";
         Robot.getInstance().profiler.start(writeTag);
 
-        turnServo.set(finalServoPosition);
-        driveMotor.set(finalDrivePower);
+        if (Double.isNaN(lastAppliedServoPosition) ||
+                Math.abs(finalServoPosition - lastAppliedServoPosition) > Constant.TURN_SERVO_CACHING_TOLERANCE) {
+            turnServo.set(finalServoPosition);
+            lastAppliedServoPosition = finalServoPosition;
+        }
+
+        if (Double.isNaN(lastAppliedDrivePower) ||
+                Math.abs(finalDrivePower - lastAppliedDrivePower) > Constant.DRIVE_MOTOR_CACHING_TOLERANCE) {
+            driveMotor.set(finalDrivePower);
+            lastAppliedDrivePower = finalDrivePower;
+        }
 
         Robot.getInstance().profiler.end(writeTag);
     }
